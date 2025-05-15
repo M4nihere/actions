@@ -1,6 +1,9 @@
 name: Multi-Branch Workflow Backup
 
 on:
+  push:
+    branches:
+    - workflows
   schedule:
     - cron: '* * * * *' # Run daily at midnight
   workflow_dispatch: # Allow manual trigger
