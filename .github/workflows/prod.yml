@@ -1,0 +1,22 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Check out the repository
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Print the branch name
+      - name: Show Branch Name
+        run: echo "This workflow ran on branch ${{ github.ref_name }}"
