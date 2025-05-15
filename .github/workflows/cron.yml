@@ -3,10 +3,11 @@ name: Multi-Branch Workflow Backup
 on:
   push:
     branches:
-    - workflows
+      - workflows
   schedule:
-    - cron: '* * * * *' # Run daily at midnight
-  workflow_dispatch: # Allow manual trigger
+    - cron: '* * * * *'  # Runs every minute for testing (GitHub may limit to 5 min)
+  workflow_dispatch:
+
 permissions:
   contents: write
 
@@ -15,41 +16,54 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout repository
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # Configure Git
       - name: Configure Git
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
-      # Backup workflows from each branch
-      - name: Backup Workflows
+      - name: Setup Git Auth
         run: |
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+
+      - name: Backup workflows from multiple branches into one branch
+        run: |
+          backup_branch="workflow-backup"
+
+          # Check if backup branch exists, if yes check it out, else create orphan branch
+          if git rev-parse --verify $backup_branch; then
+            git checkout $backup_branch
+          else
+            git checkout --orphan $backup_branch
+            git rm -rf .
+          fi
+
+          # Clear old backup workflows directory
+          rm -rf workflows_backup || true
+          mkdir workflows_backup
+
           for branch in main staging; do
             echo "Backing up workflows from branch: $branch"
-
-            # Fetch and check out the branch
             git fetch origin $branch
-            git checkout $branch
 
-            # Sync workflows to the backup branch
-            backup_branch="workflow-backup/$branch"
-            if git rev-parse --verify $backup_branch; then
-              git checkout $backup_branch
-            else
-              git checkout --orphan $backup_branch
-            fi
+            # Extract the workflows directory from the branch to a temp folder
+            git checkout origin/$branch -- .github/workflows
 
-            # Sync the workflows directory
-            mkdir -p .github/workflows
-            git rm -r --cached .github/workflows || true
-            cp -r .github/workflows .github/workflows_backup
-            git add .github/workflows
-            git commit -m "Backup workflows from $branch at $(date -u +'%Y-%m-%dT%H:%M:%SZ')" || echo "No changes to commit"
-
-            # Push to the backup branch
-            git push origin $backup_branch --force
+            # Copy workflows into subfolder named after branch, to avoid overwriting
+            mkdir -p workflows_backup/$branch
+            cp -r .github/workflows/* workflows_backup/$branch/ || true
           done
+
+          # Remove original workflows folder to keep backups separate
+          rm -rf .github/workflows
+
+          # Move the combined backup folder into .github/workflows
+          mkdir -p .github/workflows
+          cp -r workflows_backup/* .github/workflows/
+
+          # Add all changes, commit and push
+          git add .github/workflows
+          git commit -m "Combined backup of workflows from main and staging at $(date -u +'%Y-%m-%dT%H:%M:%SZ')" || echo "No changes to commit"
+          git push origin $backup_branch --force
