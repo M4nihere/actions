@@ -1,0 +1,50 @@
+name: Multi-Branch Workflow Backup
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # Run daily at midnight
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  backup-workflows:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout repository
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # Configure Git
+      - name: Configure Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      # Backup workflows from each branch
+      - name: Backup Workflows
+        run: |
+          for branch in main staging; do
+            echo "Backing up workflows from branch: $branch"
+
+            # Fetch and check out the branch
+            git fetch origin $branch
+            git checkout $branch
+
+            # Sync workflows to the backup branch
+            backup_branch="workflow-backup/$branch"
+            if git rev-parse --verify $backup_branch; then
+              git checkout $backup_branch
+            else
+              git checkout --orphan $backup_branch
+            fi
+
+            # Sync the workflows directory
+            mkdir -p .github/workflows
+            git rm -r --cached .github/workflows || true
+            cp -r .github/workflows .github/workflows_backup
+            git add .github/workflows
+            git commit -m "Backup workflows from $branch at $(date -u +'%Y-%m-%dT%H:%M:%SZ')" || echo "No changes to commit"
+
+            # Push to the backup branch
+            git push origin $backup_branch --force
+          done
